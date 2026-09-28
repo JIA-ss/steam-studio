@@ -1,0 +1,42 @@
+name: Manual live smoke
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --python '3.13'
+      - name: Collect two public games without credentials
+        run: uv run python skills/steam-research/tools/steam-games-scraper/SteamGamesScraper.py --appids 413150 1145360 --steamspy --retries 1 --data-dir data/smoke
+      - name: Verify actual payloads
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          data = Path('data/smoke')
+          run = json.loads((data / 'run.json').read_text())
+          games = json.loads((data / 'games.json').read_text())
+          assert run['status'] == 'complete'
+          assert set(games) == {'413150', '1145360'}
+          for appid, game in games.items():
+              assert game['status'] == 'ok'
+              assert game['appid'] == int(appid)
+              assert game['name'] and game['review_summary']['total_reviews'] > 0
+              assert isinstance(game['tags'], dict) and game['tags']
+              assert game['currency'] == 'USD' and isinstance(game['price_final_minor'], int)
+              assert all(source['status'] == 'ok' for source in game['sources'].values())
+              for source in game['sources'].values():
+                  assert (data / source['raw_file']).is_file()
+              print(json.dumps({'appid': appid, 'name': game['name'], 'sources': list(game['sources']), 'status': game['status']}))
+          PY
+      - name: Show source status on failure
+        if: failure()
+        run: test ! -f data/smoke/run.json || cat data/smoke/run.json

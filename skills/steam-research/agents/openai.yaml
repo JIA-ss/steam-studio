@@ -1,0 +1,6 @@
+interface:
+  display_name: "Steam Research"
+  short_description: "Discover Steam game directions with source-backed research"
+  default_prompt: "Use $steam-research to map the Steam market and identify feasible game directions with evidence."
+policy:
+  allow_implicit_invocation: true
