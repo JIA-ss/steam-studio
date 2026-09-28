@@ -288,8 +288,13 @@ def fetch_record(client, appid, country, language, use_spy, raw_dir):
 
     payload = fetch("steam_store", STORE_URL, {"appids": appid, "cc": country, "l": language})
     envelope = payload.get(str(appid)) if isinstance(payload, dict) else None
+    if isinstance(envelope, dict) and envelope.get("success") is False:
+        sources["steam_store"].update(status="unavailable", reason="not_available_in_store_region")
+        return None, {"status": "unavailable", "reason": "store_unavailable", "sources": sources}
     if not isinstance(envelope, dict) or envelope.get("success") is not True or not isinstance(envelope.get("data"), dict):
-        return None, {"status": "error", "reason": "store_unavailable", "sources": sources}
+        if sources["steam_store"]["status"] == "ok":
+            sources["steam_store"].update(status="error", error="invalid_store_schema")
+        return None, {"status": "error", "reason": "store_fetch_failed", "sources": sources}
     app = envelope["data"]
     if app.get("type") != "game":
         return None, {"status": "excluded", "reason": "not_game", "sources": sources}
@@ -316,18 +321,23 @@ def fetch_record(client, appid, country, language, use_spy, raw_dir):
         sources["steam_reviews"].update(status="error", error="invalid_review_schema")
     if use_spy:
         spy = fetch("steamspy", SPY_URL, {"request": "appdetails", "appid": appid})
-        if isinstance(spy, dict) and str(spy.get("appid")) == str(appid):
+        if isinstance(spy, dict) and str(spy.get("appid")) == str(appid) and not spy.get("name"):
+            # SteamSpy's no-coverage placeholder can still contain a synthetic owners range.
+            sources["steamspy"].update(status="unavailable", reason="no_game_coverage")
+        elif isinstance(spy, dict) and str(spy.get("appid")) == str(appid):
             # Preserve estimates as provided, never substitute zeros or equate owners with sales.
             game["steamspy"] = {"owners_estimate_range": spy.get("owners"),
                                 "peak_ccu_yesterday_reported": spy.get("ccu")}
             tags = spy.get("tags")
             if isinstance(tags, dict) and all(isinstance(k, str) and type(v) is int and v >= 0 for k, v in tags.items()):
                 game["tags"] = tags
+            elif tags == [] or tags is None:
+                sources["steamspy"].update(status="unavailable", reason="no_tag_coverage")
             else:
-                sources["steamspy"].update(status="error", error="missing_or_invalid_tags")
+                sources["steamspy"].update(status="error", error="invalid_tags_schema")
         elif sources["steamspy"]["status"] == "ok":
             sources["steamspy"].update(status="error", error="invalid_steamspy_schema")
-    status = "partial" if any(s["status"] == "error" for s in sources.values()) else "ok"
+    status = "partial" if any(s["status"] in ("error", "unavailable") for s in sources.values()) else "ok"
     game["status"] = status
     return game, {"status": status, "sources": sources}
 
@@ -373,7 +383,7 @@ def collect(client, ids, data_dir, country="us", language="english", use_spy=Fal
         raise
     manifest["finished_at"] = utcnow()
     manifest["processed_count"] = len(manifest["results"])
-    manifest["status"] = "interrupted" if interrupted else ("partial" if any(r["status"] in ("error", "partial") for r in manifest["results"].values()) else "complete")
+    manifest["status"] = "interrupted" if interrupted else ("partial" if any(r["status"] in ("error", "partial", "unavailable") for r in manifest["results"].values()) else "complete")
     save_json(manifest, manifest_path)
     return 130 if interrupted else (2 if manifest["status"] == "partial" else 0)
 

@@ -1,5 +1,7 @@
 # Validation record — 2026-09-28
 
+Follow-up: [full catalog and expanded interface acceptance](interface-acceptance-20260928.md) succeeded locally after this initial smoke, with explicit upstream coverage gaps. It supersedes the earlier local connectivity limitation below; it does not establish full per-game coverage.
+
 ## Offline behavior
 
 `uv run python -m unittest discover -s tests -v`

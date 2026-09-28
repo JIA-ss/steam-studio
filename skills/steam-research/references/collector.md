@@ -2,6 +2,16 @@
 
 Run from the repository root with Python 3.10+ and `uv sync --locked` (or install the single `requests` dependency). The tool is read-only against public Steam/SteamSpy endpoints. The only credential used is `STEAM_API_KEY` for catalog discovery; `.env.example` documents it but `.env` is not automatically loaded.
 
+## Standalone skill installs (including Multica)
+
+A copied/imported skill has its tool and references but may not include the repository root or `uv.lock`. Resolve the actual skill directory, then execute from the task workspace:
+
+```sh
+uv run --with 'requests>=2.32.3,<3' python /absolute/skill-dir/tools/steam-games-scraper/SteamGamesScraper.py --appids 413150 --steamspy --data-dir /absolute/task-dir/data/steam-research
+```
+
+The paths above are placeholders to resolve at runtime. This fallback installs a compatible dependency dynamically; for reproducible maintenance prefer the Git checkout and its committed lock. Keep runtime data outside the installed skill directory. A supplied environment key is inherited; do not copy it into instructions or imported skill files.
+
 ## Commands
 
 ```sh
@@ -24,6 +34,14 @@ Use `--country cn --language schinese` for Chinese store metadata. Review summar
 
 Minimum request interval: 1.5 seconds, including retries. Default 3 extra attempts (maximum 5), request timeout 20 seconds. HTTP 429 respects numeric Retry-After up to 60 seconds; larger/date-form waits stop the request rather than retry early. This does not guarantee an upstream quota; stop or slow down when rate-limited. Catalog paging and `appdetails` do not use SteamSpy's slower `request=all` route.
 
+## Acceptance scope and long runs
+
+- `--catalog-only`: full ID discovery, not full detail coverage.
+- Interface acceptance: representative explicit AppIDs plus region changes, upcoming/free games, non-game and unavailable cases, followed by resume/refresh checks. Expected unavailable/excluded results must be listed separately from transport or parser failures.
+- Full details: `--all` processes every selected ID. With 189,070 IDs and three requests per game, the minimum 1.5-second spacing alone is approximately 9.8 days, before latency/retries. The current JSON implementation rewrites accumulated state per record and is not stress-tested at this scale; do not promise a full-market completion SLA. Use bounded cohorts until scalable persistence is implemented.
+
+Every acceptance report should state catalog count, selected detail count, source statuses, expected exclusions, unresolved failures, country/language, timestamp and the validated code version. An interface test does not establish research coverage or estimator accuracy.
+
 ## Files and schema v1
 
 - `catalog.json`: source URL, retrieval timestamp, AppID/name metadata; saved only after successful pagination. It contains no API key.
@@ -31,7 +49,7 @@ Minimum request interval: 1.5 seconds, including retries. Default 3 extra attemp
 - `raw/`: source JSON envelopes with timestamps and public request parameters. Latest raw fetches replace earlier ones in the same directory; use separate directories to preserve historical snapshots.
 - `run.json`: selected and processed counts, per-ID status/source errors, timestamps and terminal status. Replaced each run; copy the directory to preserve a run history.
 
-`status=ok` requires all requested sources to validate. `partial` retains useful fields when an enrichment fails. A failed refresh preserves the previous record as `stale`. Missing prices, unknown review totals and unavailable estimates stay `null`. `is_free` comes from Steam and is independent of missing price data. Non-game apps are explicitly `excluded`; unavailable games remain errors in the manifest and are not permanently blacklisted.
+`status=ok` requires all requested sources to validate. `partial` retains useful fields when an enrichment fails. A failed refresh preserves the previous record as `stale`. A valid Steam `success=false` response is `unavailable`, distinct from HTTP/network/parser errors. SteamSpy no-name placeholders and missing tags are source-level `unavailable` coverage gaps; they keep the game `partial` and the run nonzero, rather than fabricating complete data. No-name placeholder ownership/CCU values are not imported. Missing prices, unknown review totals and unavailable estimates stay `null`. `is_free` comes from Steam and is independent of missing price data. Non-game apps are explicitly `excluded`; unavailable games remain visible in the manifest and are not permanently blacklisted.
 
 `price_final_minor` / `price_initial_minor` are Steam's raw integer price units; keep `currency` and `price_display` alongside them. Never parse a localized formatted price for calculations or compare different currencies without explicit conversion.
 

@@ -198,6 +198,31 @@ class ScraperTests(unittest.TestCase):
                 self.assertEqual(s.collect(FakeClient(), [12], tmp), 130)
             self.assertEqual(json.loads((Path(tmp) / 'run.json').read_text())['status'], 'interrupted')
 
+    def test_spy_placeholder_does_not_become_owners_estimate(self):
+        spy = {'appid': 12, 'name': None, 'owners': '0 .. 20,000', 'ccu': 0, 'tags': []}
+        client = FakeClient({'12': {'success': True, 'data': app(coming=True)}}, reviews(0), spy)
+        with tempfile.TemporaryDirectory() as tmp:
+            row, result = s.fetch_record(client, 12, 'us', 'english', True, Path(tmp))
+        self.assertEqual(result['status'], 'partial')
+        self.assertEqual(row['sources']['steamspy']['status'], 'unavailable')
+        self.assertIsNone(row['steamspy'])
+
+    def test_empty_tag_list_is_coverage_gap_not_parser_failure(self):
+        spy = {'appid': 12, 'name': 'Example', 'owners': '0 .. 20,000', 'ccu': 0, 'tags': []}
+        client = FakeClient({'12': {'success': True, 'data': app()}}, reviews(), spy)
+        with tempfile.TemporaryDirectory() as tmp:
+            row, result = s.fetch_record(client, 12, 'us', 'english', True, Path(tmp))
+        self.assertEqual(result['status'], 'partial')
+        self.assertEqual(row['sources']['steamspy']['reason'], 'no_tag_coverage')
+        self.assertIsNone(row['tags'])
+
+    def test_store_negative_response_is_unavailable_and_not_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(s.collect(FakeClient({'12': {'success': False}}), [12], tmp), 2)
+            run = json.loads((Path(tmp) / 'run.json').read_text())
+            self.assertEqual(run['results']['12']['status'], 'unavailable')
+            self.assertEqual(run['results']['12']['sources']['steam_store']['status'], 'unavailable')
+
 
 if __name__ == '__main__':
     unittest.main()
