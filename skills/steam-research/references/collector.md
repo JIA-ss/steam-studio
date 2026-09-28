@@ -39,6 +39,10 @@ Minimum request interval: 1.5 seconds, including retries. Default 3 extra attemp
 
 Exit codes: `0` selected records completed/reused/excluded; `2` partial/upstream/input/local-I/O failure; `130` interruption. Exit 0 never implies full-market coverage. Atomic JSON writes protect prior files. A hard kill can leave the last manifest `running`; inspect it and resume. Failed catalog retrieval leaves any earlier catalog file unchanged, so check freshness before reusing it.
 
+## Connectivity
+
+The HTTP client honors the proxy configuration discovered by Python requests. If a run reports `network_proxy_error`, check the configured proxy route; if it reports `network_tls_error`, check trust/certificate setup. Do not disable TLS verification to force a pass. A source failure must remain an error, not a zero record. The manual GitHub Actions smoke workflow is an independent network check, not a fix for local connectivity.
+
 ## Sources
 
 - [App catalog](https://partner.steamgames.com/doc/webapi/IStoreService)
